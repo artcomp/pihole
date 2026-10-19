@@ -252,6 +252,66 @@ curl -s -H "sid: $SID" http://192.168.0.101/api/stats/summary | jq .
 
 ---
 
+## DNS Local — Nomes em vez de IPs
+
+Como o Pi-hole é o DNS de toda a rede, registros locais (A records)
+funcionam automaticamente para **todos os dispositivos**, sem instalar
+nada.
+
+### Configuração atual
+
+| Nome | IP | Acesso |
+|---|---|---|
+| `pi.local` | `192.168.0.101` | Pi-hole (admin em `http://pi.local/admin`) |
+| `pihole.local` | `192.168.0.101` | Pi-hole (alias) |
+| `router.local` | `192.168.0.1` | D-Link DIR-809 |
+
+### Como adicionar novos nomes
+
+**Via UI:** Local DNS → DNS Records → adicionar `IP` + `domínio`
+
+**Via API:**
+```bash
+SID=$(curl -s -X POST http://192.168.0.101/api/auth \
+  -d '{"password":"SUA_SENHA"}' | jq -r .session.sid)
+
+curl -s -X PATCH -H "sid: $SID" -H "Content-Type: application/json" \
+  http://192.168.0.101/api/config \
+  -d '{"config":{"dns":{"hosts":[
+    "192.168.0.101 pi.local",
+    "192.168.0.1 router.local",
+    "192.168.0.102 nas.local"
+  ]}}}'
+```
+
+> **Formato:** `"IP hostname"` (um por item do array). A alteração é
+> aplicada imediatamente, sem reiniciar.
+
+### Teste
+
+```bash
+dig +short pi.local A        # → 192.168.0.101
+host router.local            # → 192.168.0.1
+curl http://pi.local/admin/  # → 302 (redirect p/ login)
+```
+
+### Aviso sobre `.local`
+
+`.local` é o domínio reservado para **mDNS/Bonjour** (RFC 6762). Funciona
+bem com o Pi-hole em unicast DNS, mas em redes com muitos dispositivos
+Apple pode haver conflito (o macOS consulta mDNS para `.local`). Se
+notar lentidão ou falha de resolução, troque para `.lan`, `.home` ou
+`.internal`:
+
+```bash
+# Exemplo: trocar para .lan
+curl -s -X PATCH -H "sid: $SID" -H "Content-Type: application/json" \
+  http://192.168.0.101/api/config \
+  -d '{"config":{"dns":{"hosts":["192.168.0.101 pi.lan"]}}}'
+```
+
+---
+
 ## Limitações Conhecidas
 
 ### YouTube — anúncios de vídeo e in-feed
