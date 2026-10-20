@@ -190,11 +190,16 @@ Acesse `http://192.168.0.101/admin` → **Adlists** e adicione estas listas
 | pgl.yoyo adservers | `https://pgl.yoyo.org/adservers/serverlist.php?hostformat=hosts&showintro=1&mimetype=plaintext` | hosts |
 | HaGeZi Pro | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt` | ABP |
 | Phishing Army | `https://phishing.army/download/phishing-army-hosts.txt` | hosts |
+| HaGeZi TIF (threat intel) | `https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/tif.txt` | ABP |
+| URLHaus (abuse.ch — malware) | `https://urlhaus.abuse.ch/downloads/hostfile/` | hosts |
+| ThreatFox (abuse.ch — IOC) | `https://threatfox.abuse.ch/downloads/hostfile/` | hosts |
 
-> **~1.12M domínios únicos** após gravity update.
+> **~2.75M domínios únicos** após gravity update (15 listas: 12 de
+> anúncios/rastreio + 3 de ameaças — TIF, URLHaus, ThreatFox, todas
+> verificadas bloqueando domínios malware para `0.0.0.0`).
 >
 > Além disso, `connect.facebook.net` (pixel da Meta) não vem em nenhuma
-> das 12 listas — foi adicionado como **deny exato** via API (ver abaixo).
+> das 15 listas — foi adicionado como **deny exato** via API (ver abaixo).
 
 ### Deny exatos (fora das lists)
 
@@ -213,7 +218,7 @@ sudo pihole updateGravity
 
 Saída esperada:
 ```
-[i] Number of gravity domains: 1600345 (1119371 unique domains)
+[i] Number of gravity domains: 3425609 (2748768 unique domains)
 ```
 
 ### Atualização automática
@@ -443,7 +448,7 @@ o Pi-hole ou manter um secundário (aceitando o risco de DoH bypass).
 2. IP `.101` **voltou automaticamente** — a reserva DHCP da D-Link
    é por MAC (`2c:cf:67:1c:c0:f3`), não muda com reinstall
 3. Pi-hole instalado via `setupVars.conf` + `--unattended` (Passo 1)
-4. Password, 12 blocklists, gravity, deny exato e registros locais
+4. Password, 15 blocklists, gravity, deny exato e registros locais
    refeitos (tudo documentado neste README)
 5. DNS secundário da D-Link: `8.8.8.8` (workaround da pane) →
    **`0.0.0.0`** (elimina risco de DoH bypass)
@@ -457,6 +462,11 @@ o Pi-hole ou manter um secundário (aceitando o risco de DoH bypass).
   Wi-Fi após queda de energia, checar esse diretório na SD
 - Reserva DHCP por MAC no roteador torna o `.101` sobrevivente a
   qualquer reinstall
+- **`gravity.db_temp` com `disk I/O error`** (19/10/2026, ao adicionar
+  as listas TIF/URLHaus/ThreatFox): a 1ª execução do `updateGravity`
+  falhou gravando o temp, a 2ª rodou limpa (sem erros ext4/mmc no
+  `dmesg`, disco com espaço). Se repetir: reexecutar `sudo pihole
+  updateGravity`; se persistir, checar a SD (`dmesg | grep -i error`)
 
 ---
 

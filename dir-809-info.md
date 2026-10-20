@@ -107,26 +107,29 @@ Resultado do lease DHCP: `domain_name_server = {192.168.0.101}` — o
 
 ## Blocklists do Pi-hole (configuradas em 19/10/2026)
 
-**11 listas confiáveis**, todas com URLs dinâmicas (atualização automática sem intervenção manual):
+**15 listas confiáveis**, todas com URLs dinâmicas (atualização automática sem intervenção manual):
 
 | # | Lista | Domínios | Destaque |
 |---|---|---|---|
 | 1 | StevenBlack hosts | 71k | Base unificada |
-| 3 | OISD full | 235k | Curada, inclui Google/Meta ads |
-| 4 | AdGuard DNS filter | 188k | Forte cobertura Google/Meta |
-| 5 | AdAway | 6.5k | Clássica hosts |
-| 6 | 1hosts Lite | 203k | DNS-safe, ads |
-| 7 | notracking | 500k | Rastreamento abrangente |
-| 8 | Dandelion Sprout Anti-Malware | 12k | Malware/ads |
-| 10 | MVPS hosts | 8.7k | Clássica |
-| 11 | Dan Pollock someonewhocares | 13k | Clássica |
-| 12 | pgl.yoyo adservers | 3.6k | Adservers |
-| 13 | HaGeZi Pro (adblock) | 203k | Google Ads, DoubleClick, Meta/Facebook, trackers |
-| 14 | Phishing Army hosts | 156k | Phishing |
+| 2 | OISD full | 235k | Curada, inclui Google/Meta ads |
+| 3 | AdGuard DNS filter | 188k | Forte cobertura Google/Meta |
+| 4 | AdAway | 6.5k | Clássica hosts |
+| 5 | 1hosts Lite | 203k | DNS-safe, ads |
+| 6 | notracking | 500k | Rastreamento abrangente |
+| 7 | Dandelion Sprout Anti-Malware | 12k | Malware/ads |
+| 8 | MVPS hosts | 8.7k | Clássica |
+| 9 | Dan Pollock someonewhocares | 13k | Clássica |
+| 10 | pgl.yoyo adservers | 3.6k | Adservers |
+| 11 | HaGeZi Pro (adblock) | 203k | Google Ads, DoubleClick, Meta/Facebook, trackers |
+| 12 | Phishing Army hosts | 156k | Phishing |
+| 13 | HaGeZi TIF (threat intel) | 1.79M | Malware/C2/phishing — lista de ameaças |
+| 14 | URLHaus (abuse.ch) | 418 | URLs de distribuição de malware ativo |
+| 15 | ThreatFox (abuse.ch) | 31k | IOC de malware (indicators of compromise) |
 
-**Total: ~1.12M domínios únicos** bloqueados (gravity: 1.6M com subdomínios).
+**Total: ~2.75M domínios únicos** bloqueados (gravity: 3.4M com subdomínios).
 
-**Atualização automática:** cron do Pi-hole roda `pihole updateGravity` todo domingo 03:30 — as listas são URLs dinâmicas (GitHub raw, OISD, etc.), então sempre baixam a versão mais recente.
+**Atualização automática:** cron do Pi-hole roda `pihole updateGravity` todo domingo 04:06 (`6 4 * * 7`, hora sorteada na instalação) — as listas são URLs dinâmicas (GitHub raw, OISD, etc.), então sempre baixam a versão mais recente.
 
 **Domínios de anúncio Google/Meta verificados como bloqueados:**
 - `doubleclick.net`, `pagead2.googlesyndication.com`, `googlesyndication.com`, `googleadservices.com`, `ad.doubleclick.net`, `securepubads.g.doubleclick.net`, `google-analytics.com`, `googletagmanager.com` → todos `0.0.0.0`
