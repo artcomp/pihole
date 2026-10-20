@@ -48,8 +48,8 @@ Coletado de `wan_connection_status.asp`:
 | IP WAN | `192.168.2.7` |
 | Máscara | `255.255.255.0` |
 | Gateway | `192.168.2.1` |
-| DNS primário | `177.152.174.16` |
-| DNS secundário | `177.152.173.35` |
+| DNS primário | `192.168.0.101` (Pi-hole — campo manual; antes: `177.152.174.16` do ISP) |
+| DNS secundário | `0.0.0.0` (campo manual — sem fallback; antes: `177.152.173.35` do ISP) |
 | Estado da conexão | `connection_state=2` (conectado) |
 | Link físico | `wan_physical_link=0` / `wan_physical_state=0` (sem cabo na porta WAN do DIR-809 — conectado via Wi-Fi/repetidor) |
 | Uptime da interface | ~2 s (reiniciado recentemente) |
@@ -78,13 +78,26 @@ O DIR-809 entrega o Pi-hole (`192.168.0.101`) como DNS primário para **todos** 
 
 Como foi feito (o firmware ignora DNS fora do subnet LAN no modo DHCP-WAN e não tem campo de DNS próprio no DHCP):
 
-1. **WAN primário DNS** = `192.168.0.101`, **secundário vazio** (`Basic/wan_dhcp.asp`, campo "Servidor DNS primário (opcional)")
+1. **WAN primário DNS** = `192.168.0.101`, **secundário `0.0.0.0`** (`Basic/wan_dhcp.asp`, campos "Servidor DNS primário/secundário (opcional)")
 2. **DNS relay desabilitado** (`Basic/Network.asp`) — sem relay, o DHCP anuncia o DNS WAN aos clientes
 3. **Reserva DHCP** do Pi: `pi` / `192.168.0.101` / `2c:cf:67:1c:c0:f3` / expiração "Nunca"
 
-Resultado do lease DHCP: `domain_name_server = {192.168.0.101}` (sem fallback).
+Resultado do lease DHCP: `domain_name_server = {192.168.0.101}` — o
+`0.0.0.0` é descartado como inválido pelo D-Link no anúncio DHCP
+(confirmado em `ipconfig getpacket en0`).
 
-> **Por que o DNS secundário está vazio (sem `1.1.1.1`):** quando `1.1.1.1` aparece na lista de resolvers do macOS, o Chrome em modo "Usar DNS seguro" (`chrome://settings/security`) faz upgrade automático para DoH usando o resolver do sistema — neste caso, Cloudflare DoH — e **contorna o Pi-hole** (anúncios carregam via Cloudflare enquanto `curl` ainda é bloqueado). Removendo `1.1.1.1` do lease DHCP, o Chrome não consegue fazer upgrade de DoH e todas as consultas passam pelo Pi-hole.
+> **Por que o DNS secundário é `0.0.0.0` (e não um resolver público):**
+> quando `1.1.1.1` (ou `8.8.8.8`) aparece na lista de resolvers do
+> macOS, o Chrome em modo "Usar DNS seguro" (`chrome://settings/security`)
+> faz upgrade automático para DoH usando o resolver do sistema — neste
+> caso, Cloudflare/Google DoH — e **contorna o Pi-hole** (anúncios
+> carregam via DoH enquanto `curl` ainda é bloqueado). Com `0.0.0.0` no
+> campo (ou vazio), não há resolver público no lease e todas as
+> consultas passam pelo Pi-hole.
+>
+> **Histórico:** em 19/10/2026 o Pi-hole caiu e `8.8.8.8` foi
+> adicionado como secundário p/ restaurar a internet. Com o Pi-hole
+> de volta, foi substituído por `0.0.0.0`.
 >
 > **Trade-off:** se o Pi-hole cair, não há DNS fallback — a resolução de nomes para. (Qualquer resolver público secundário reativaria o bypass de DoH do Chrome; desativar "Usar DNS seguro" no Chrome é alternativa possível caso precise do fallback.)
 

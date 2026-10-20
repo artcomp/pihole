@@ -40,7 +40,7 @@
 2. D-Link entrega IP + `DNS = 192.168.0.101` (Pi-hole)
 3. Dispositivo consulta Pi-hole para todo hostname
 4. Pi-hole: se domínio está em blocklist → responde `0.0.0.0` (bloqueado)
-5. Se não está → encaminha para upstream (`1.1.1.1`, `8.8.8.8`)
+5. Se não está → encaminha para upstream (`1.1.1.1`, `1.0.0.1`)
 
 ---
 
@@ -51,12 +51,14 @@
 | **Pi-hole** | v6.5 (Core), Web v6.6.1, FTL v6.8 — `192.168.0.101`, porta 53 |
 | **Roteador** | D-Link DIR-809 (A2, firmware 1.07) — NAT duplo, DHCP-WAN |
 | **Rede** | `192.168.0.0/24` (Quarto-wifi), gateway `192.168.0.1` |
-| **Upstream DNS** | `1.1.1.1`, `8.8.8.8` (Cloudflare, Google) — só quando não bloqueado |
-| **DNS Secundário** | **VAZIO** (intencional — ver seção DoH abaixo) |
+| **Upstream DNS** | `1.1.1.1`, `1.0.0.1` (Cloudflare) — só quando não bloqueado |
+| **DNS Secundário (D-Link)** | `0.0.0.0` (inválido de propósito — ver seção DoH abaixo) |
 
 ---
 
 ## Passo 1 — Instalar Pi-hole
+
+### Instalação interativa (com terminal)
 
 ```bash
 # No Raspberry Pi (ou dispositivo Linux)
@@ -71,15 +73,45 @@ Durante a instalação:
 - Query logging: sim
 - **Admin password:** anote (usaremos para API/UI)
 
+### Instalação não-interativa (sem TTY — como foi feito no Zero 2)
+
+O instalador v6 usa `dialog` e **falha com "Error opening terminal"**
+em SSH sem TTY. Truque: semear `setupVars.conf` (torna
+`fresh_install=false` → pula todos os diálogos) e rodar `--unattended`:
+
+```bash
+sudo mkdir -p /etc/pihole
+sudo tee /etc/pihole/setupVars.conf > /dev/null << 'EOF'
+PIHOLE_INTERFACE=wlan0
+IPV4_ADDRESS=192.168.0.101/24
+QUERY_LOGGING=true
+INSTALL_WEB_SERVER=true
+INSTALL_WEB_INTERFACE=true
+LIGHTTPD_ENABLED=true
+BLOCKING_ENABLED=true
+DNSMASQ_LISTENING=single
+PIHOLE_DNS_1=1.1.1.1
+PIHOLE_DNS_2=1.0.0.1
+EOF
+
+curl -sSL https://install.pi-hole.net -o /tmp/basic-install.sh
+sudo bash /tmp/basic-install.sh --unattended
+```
+
 ### Configurações pós-instalação
 
 ```bash
-# Modo de escuta: aceitar consultas de qualquer interface
-pihole --setmode ALL
+# Senha do admin (não-interativo: repete 2x)
+printf 'NOVA_SENHA\nNOVA_SENHA\n' | sudo pihole setpassword
 
 # Verificar
 pihole status
 ```
+
+> **Nota (v6):** `DNSMASQ_LISTENING=single` no setupVars vira
+> `listeningMode=SINGLE` (escuta só em `wlan0`) — suficiente, pois todos
+> os clientes estão na mesma interface. `pihole --setmode ALL` só é
+> necessário se houver outras interfaces de rede.
 
 Web admin: `http://192.168.0.101/admin`
 
@@ -102,7 +134,7 @@ quando ligado, anuncia o IP do próprio roteador. A solução é:
 
 1. **DNS relay → DESABILITADO**
 2. **DNS WAN primário → IP do Pi-hole** (192.168.0.101)
-3. **DNS WAN secundário → VAZIO** (por quê? ver seção DoH)
+3. **DNS WAN secundário → `0.0.0.0`** (por quê? ver seção DoH)
 4. **Reserva DHCP → Pi-hole sempre em 192.168.0.101**
 
 ### Acesso ao painel
@@ -160,6 +192,18 @@ Acesse `http://192.168.0.101/admin` → **Adlists** e adicione estas listas
 | Phishing Army | `https://phishing.army/download/phishing-army-hosts.txt` | hosts |
 
 > **~1.12M domínios únicos** após gravity update.
+>
+> Além disso, `connect.facebook.net` (pixel da Meta) não vem em nenhuma
+> das 12 listas — foi adicionado como **deny exato** via API (ver abaixo).
+
+### Deny exatos (fora das lists)
+
+```bash
+# connect.facebook.net (Meta pixel) — POST /api/domains/{type}/{kind}
+curl -s -X POST "http://192.168.0.101/api/domains/deny/exact" \
+  -H "sid: $SID" -H "Content-Type: application/json" \
+  -d '{"domain":"connect.facebook.net","comment":"Meta pixel tracker"}'
+```
 
 ### Atualizar gravity (após adicionar listas)
 
@@ -169,19 +213,19 @@ sudo pihole updateGravity
 
 Saída esperada:
 ```
-[i] Number of gravity domains: 1600479 (1119505 unique domains)
+[i] Number of gravity domains: 1600345 (1119371 unique domains)
 ```
 
 ### Atualização automática
 
-O Pi-hole já tem cron configurado:
+O Pi-hole já tem cron configurado (hora aleatória, definida na instalação):
 ```cron
-# /etc/cron.d/pihole
-30 3 * * 7 pihole PATH="$PATH:/usr/sbin:/usr/local/bin/" pihole updateGravity
+# /etc/cron.d/pihole (exemplo real)
+6 4 * * 7 pihole PATH="$PATH:/usr/sbin:/usr/local/bin/" pihole updateGravity
 ```
-Todo domingo às 03:30 baixa as versões mais recentes das listas. Como as
-URLs são dinâmicas (GitHub raw, OISD, etc.), sempre recebe o conteúdo
-atualizado.
+Todo domingo (04:06 no install atual) baixa as versões mais recentes das
+listas. Como as URLs são dinâmicas (GitHub raw, OISD, etc.), sempre
+recebe o conteúdo atualizado.
 
 ---
 
@@ -200,11 +244,20 @@ tem as blocklists.
 
 ### A solução
 
-Remover o DNS secundário público do lease DHCP:
-- `domain_name_server = {192.168.0.101}` (sem `1.1.1.1`)
+Remover o resolver público do lease DHCP. Como o firmware do DIR-809
+tem um campo de secundário livre, usamos **`0.0.0.0`** como
+secundário:
+
+- `domain_name_server = {192.168.0.101}` (o `0.0.0.0` é descartado
+  como inválido — o lease nem sai)
 - Chrome não consegue fazer upgrade de DoH (não há resolver público
   para detectar)
 - Todas as consultas passam pelo Pi-hole, sem exceção
+
+> Histórico: durante uma pane do Pi-hole adicionamos `8.8.8.8` como
+> secundário para restaurar a internet. Com o Pi-hole de volta, o
+> `8.8.8.8` foi **removido** (substituído por `0.0.0.0`) para eliminar
+> o risco de DoH bypass.
 
 ### Trade-off
 
@@ -344,16 +397,66 @@ o Pi-hole ou manter um secundário (aceitando o risco de DoH bypass).
 ## Reprodução Rápida (checklist)
 
 - [ ] Instalar Pi-hole (`curl -sSL https://install.pi-hole.net | bash`)
-- [ ] Definir password do admin
-- [ ] `pihole --setmode ALL`
+      — sem TTY, usar método `setupVars.conf` + `--unattended` (Passo 1)
+- [ ] Definir password do admin (`sudo pihole setpassword`)
 - [ ] Adicionar as 12 blocklists (seção Passo 3)
+- [ ] Deny exato: `connect.facebook.net` (seção Passo 3)
 - [ ] `sudo pihole updateGravity`
-- [ ] Configurar D-Link: DNS relay OFF, DNS WAN = 192.168.0.101, secundário vazio
-- [ ] Reserva DHCP para Pi em 192.168.0.101
+- [ ] Registros locais: `pi.local`, `pihole.local`, `router.local` (seção DNS Local)
+- [ ] Configurar D-Link: DNS relay OFF, DNS WAN = 192.168.0.101, secundário `0.0.0.0`
+- [ ] Reserva DHCP para Pi em 192.168.0.101 (`2c:cf:67:1c:c0:f3`)
 - [ ] Reiniciar D-Link
-- [ ] Verificar lease DHCP: `domain_name_server = 192.168.0.101`
+- [ ] Verificar lease DHCP: `domain_name_server = {192.168.0.101}`
 - [ ] Testar `dig @192.168.0.101 doubleclick.net A` → 0.0.0.0
+- [ ] Testar `dig @192.168.0.101 pi.local A` → 192.168.0.101
 - [ ] Verificar Chrome: Secure DNS = "Padrão do sistema"
+
+---
+
+## Ocorrência: Pane e Recuperação (19/10/2026)
+
+### O que houve
+
+1. Durante um `updateGravity` (escrita grande no SQLite), a energia
+   foi cortada no meio da gravação
+2. O NetworkManager estava **salvando o perfil Wi-Fi** (escrita atômica
+   em arquivo temporário `.nmconnection.XXXXXX`) — o corte deixou o
+   arquivo final **sem conter nada** e só o temp vazio
+3. Efeito: Pi ligado, LED verde aceso, **mas `wlan0` sem perfil** →
+   nunca mais subiu no Wi-Fi → sem DHCP lease → sem Pi-hole →
+   a rede inteira ficou sem DNS
+4. O fs ext4 ficou com erros menores (bitmap/contadores de blocos —
+   `e2fsck -nf` acusa, mas não impede boot)
+
+### Por que o Pi "sumiu" da rede
+
+- D-Link: Pi ausente da tabela DHCP **e** da lista de clientes
+  wireless (só 3 clientes) → confirma que o problema era o **Wi-Fi
+  do Pi**, não o Pi-hole em si
+- Sem cabo de rede disponível (Zero 2 W só tem Wi-Fi) → diagnóstico
+  via **SD card no Mac** (debugfs read-only)
+
+### Recuperação executada
+
+1. **Formatação da SD + imagem nova** (Raspberry Pi OS 32-bit,
+   "Zero 2" selecionado no Imager, SSH habilitado, user `art`)
+2. IP `.101` **voltou automaticamente** — a reserva DHCP da D-Link
+   é por MAC (`2c:cf:67:1c:c0:f3`), não muda com reinstall
+3. Pi-hole instalado via `setupVars.conf` + `--unattended` (Passo 1)
+4. Password, 12 blocklists, gravity, deny exato e registros locais
+   refeitos (tudo documentado neste README)
+5. DNS secundário da D-Link: `8.8.8.8` (workaround da pane) →
+   **`0.0.0.0`** (elimina risco de DoH bypass)
+
+### Lições
+
+- **`sync` antes de desligar**: nunca cortar energia durante
+  `pihole -g` (domingo 04:06 — cuidado com apagões nesse horário)
+- O netplan/NM do Raspberry Pi OS escreve o perfil Wi-Fi em
+  `/etc/NetworkManager/system-connections/` — se o Pi voltar sem
+  Wi-Fi após queda de energia, checar esse diretório na SD
+- Reserva DHCP por MAC no roteador torna o `.101` sobrevivente a
+  qualquer reinstall
 
 ---
 
@@ -364,4 +467,6 @@ o Pi-hole ou manter um secundário (aceitando o risco de DoH bypass).
 | `README.md` | Este documento — arquitetura completa |
 | `dir-809-info.md` | Detalhes técnicos do D-Link DIR-809 |
 | `ge-globo-ads-blocked.png` | Screenshot de teste (ads bloqueados no ge.globo.com) |
-| `session-ses_eaba.md` | Log de sessão com detalhes de troubleshooting |
+
+> Logs de sessão e credenciais **não** são versionados
+> (`.gitignore`: `*.log`, `session-*.md`, `.playwright-mcp/`).
